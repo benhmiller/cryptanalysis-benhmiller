@@ -1,6 +1,6 @@
 # Project 1 - Cryptanalysis - COMP SCI 642: Introduction to Information Security - Spring 2024 - Prof. Cecchetti 
 
-## Due date: Friday, March 8th, 2024 - 11:59pm CDT
+## Due date: Wednesday, March 13th, 2024 - 11:59pm CDT
 
 
 ## Description
