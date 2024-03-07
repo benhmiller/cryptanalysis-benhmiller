@@ -6,8 +6,8 @@
 //                   performs cryptanalysis on ciphertext of different ciphers.
 //                   See associated documentation for more information.
 //
-//   Author        : *** INSERT YOUR NAME ***
-//   Last Modified : *** DATE ***
+//   Author        : Benjamin Miller
+//   Last Modified : 02 / 28 / 2024
 //
 
 // Include Files
@@ -54,6 +54,8 @@ int cs642PerformROTXCryptanalysis(char *ciphertext, int clen, char *plaintext,
                                   int plen, uint8_t *key) {
 
   // ADD CODE HERE
+
+
 
   // Return successfully
   return (0);
@@ -118,4 +120,26 @@ int cs642StudentCleanUp(void) {
 
   // Return successfully
   return (0);
+}
+
+int main() {
+    // Example usage of cs642Encrypt with ROT-X cipher and key = 1
+    cs642Cipher cipher = CIPHER_ROTX;
+    char key[] = "1";  // The key is a string representing the rotation amount
+    int keylen = 1;    // Length of the key
+    char plaintext[] = "Hello, World!";
+    int plen = sizeof(plaintext) - 1;  // Length of the plaintext (excluding null terminator)
+    char ciphertext[100];  // Assuming a buffer size of 100 for the ciphertext
+
+    // Call the cs642Encrypt function
+    int result = cs642Encrypt(cipher, key, keylen, plaintext, plen, ciphertext, sizeof(ciphertext));
+
+    // Check the result and print the ciphertext
+    if (result == 0) {
+        printf("Ciphertext: %s\n", ciphertext);
+    } else {
+        printf("Encryption failed\n");
+    }
+
+    return 0;
 }
