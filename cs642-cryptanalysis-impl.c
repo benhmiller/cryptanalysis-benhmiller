@@ -7,17 +7,24 @@
 //                   See associated documentation for more information.
 //
 //   Author        : Benjamin Miller
-//   Last Modified : 02 / 28 / 2024
+//   Last Modified : 03 / 11 / 2024
 //
 
 // Include Files
 #include <compsci642_log.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
+#include <ctype.h>
 
 // Project Include Files
 #include "cs642-cryptanalysis-support.h"
 
+// Declare Global Variables (for letter frequency)
+#define ALPHABET_SIZE 26
+
+// Declare the array as a global variable
+double letter_frequencies[ALPHABET_SIZE] = {0};
 
 //
 // Functions
@@ -33,45 +40,33 @@
 // Outputs      : 0 if successful, -1 if failure
 
 int cs642StudentInit(void) {
-  /*// Plaintext
-    char *plaintext = malloc(27); // Allocating memory for 26 characters + null terminator
-    strcpy(plaintext, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    int plen = strlen(plaintext);
-    printf("Plaintext: %s\n", plaintext);
+  int dictSize = cs642GetDictSize();
 
-    // Key
-    char *key = malloc(2); // Allocating memory for 1 character + null terminator
-    char *key2 = malloc(2); // Allocating memory for 1 character + null terminator
-    strcpy(key, "1");
-    strcpy(key2, "2");
-    int keyLen = strlen(key);
-    int keyLen2 = strlen(key2);
-    printf("Key: %s\n", key);
-    printf("Key2: %s\n", key2);
+  // Read words from the dictionary and update counts
+  int total_word_count = 0;
+  for (int i = 0; i < dictSize; i++) {
+    DictWord wordInfo = cs642GetWordfromDict(i); // Obtain individual word
+    char *word = wordInfo.word;
+    int count = wordInfo.count;
 
-    // Ciphertext
-    char *ciphertext = malloc(plen + 1); // Allocating memory for plen characters + null terminator
-    memset(ciphertext, 0x00, plen + 1);
-    cs642Encrypt(CIPHER_ROTX, key, keyLen, plaintext, plen, ciphertext, plen);
-    printf("Ciphertext: %s\n", ciphertext);
+    for (int j = 0; word[j] != '\0'; j++) { // Traverse characters of current word
+      char ch = word[j];
+      if (isalpha(ch)) {
+        ch = toupper(ch); // Convert to uppercase
+        letter_frequencies[ch - 'A'] += count; // Increment by number of occurrences of letter / # words (i.e. 1 * count of word = count)
+        total_word_count += count;
+      }
+      //letter_frequencies[word[j] - 'A'] += count; // Increment by number of occurrences of letter / word (i.e. 1 * count of word = count)
+      //total_word_count += count;
+    }
+  }
 
-    // Ciphertext 2
-    char *ciphertext2 = malloc(plen + 1); // Allocating memory for plen characters + null terminator
-    memset(ciphertext2, 0x00, plen + 1);
-    cs642Encrypt(CIPHER_ROTX, key2, keyLen2, plaintext, plen, ciphertext2, plen);
-    printf("Ciphertext: %s\n", ciphertext2);
-
-    // Check decryption
-    printf("Plaintext: %s\n", plaintext);
-    cs642Decrypt(CIPHER_ROTX, key, keyLen, plaintext, plen, ciphertext, plen);
-    printf("Decrypted back: %s\n", plaintext);
-
-    // Free dynamically allocated memory
-    free(plaintext);
-    free(key);
-    free(ciphertext);
-*/
-    return 0;
+  // Convert Counts to Frequencies
+  for (int i = 0; i < ALPHABET_SIZE; i++) {
+    letter_frequencies[i] = letter_frequencies[i] / (double)total_word_count;
+  }
+  
+  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,11 +145,145 @@ int cs642PerformROTXCryptanalysis(char *ciphertext, int clen, char *plaintext,
 //                plen - the length of the plaintext
 //                key - the place to put the key in
 // Outputs      : 0 if successful, -1 if failure
+// Function to perform Kasiski examination and return the probable key length
+
+double calculateChiSquared(double observed[], double expected[]) {
+    double chiSquared = 0.0;
+    for (int i = 0; i < 26; i++) {
+        chiSquared += ((observed[i] - expected[i]) * (observed[i] - expected[i])) / expected[i];
+    }
+    return chiSquared;
+}
+
+int findBestKey(double observed[], double expected[]) {
+    int bestKey = 0;
+    double minChiSquared = 1000000000;
+
+    for (int key = 0; key < 26; key++) {
+        // Shift observed frequencies by key (equivalent to a group-wise ROT-KEY cipher shift)
+        double shifted_observed[26];
+        for (int i = 0; i < 26; i++) {
+          shifted_observed[i] = observed[(i + key + 26) % 26];
+        }
+
+        // Calculate the Chi-Squared statistic for the current key
+        double chiSquared = calculateChiSquared(shifted_observed, expected);
+
+        // Update the best key if the current shift is better
+        if (chiSquared < minChiSquared) {
+            minChiSquared = chiSquared;
+            bestKey = key;
+        }
+    }
+    return bestKey;
+}
 
 int cs642PerformVIGECryptanalysis(char *ciphertext, int clen, char *plaintext,
                                   int plen, char *key) {
+  // Iterate through all possible key lengths
+  for(int possible_key = 6; possible_key <= 11; possible_key++) {
+    char group_keys[possible_key + 1]; // Each idx corresponds to best cipher group key (complete array = key candidate)
+
+    // Form cipher groups by assigning each char index in cipher text to a group number (1 - key length)
+    char** cipher_groups = (char**)malloc(sizeof(char*) * possible_key); // Array of all ciphertext groups
+    if (cipher_groups == NULL) {
+      fprintf(stderr, "Memory allocation failed\n");
+      return 1; // Return an error code
+    }
+
+    // Allocate memory for each cipher group
+    for (int i = 0; i < possible_key; i++) {
+      cipher_groups[i] = (char*)malloc(sizeof(char) * (clen / possible_key) + 1);
+      if (cipher_groups[i] == NULL) {
+        fprintf(stderr, "Memory allocation for group %d failed\n", i);
+        for (int j = 0; j < i; j++) {
+          free(cipher_groups[j]);
+        }
+        free(cipher_groups);
+        return 1;
+      }
+    }
+
+    // Form groups from the ciphertext
+    for (int i = 0; i < clen; i++) {
+      int group_index = i % possible_key; // Calculate group index of ith letter
+      cipher_groups[group_index][i / possible_key] = ciphertext[i]; // Add ith letter to position i / key_length in group
+    }
+
+    // Null-terminate each group (allows groups to be viewed as strings)
+    for (int group_index = 0; group_index < possible_key; group_index++) {
+      cipher_groups[group_index][clen / possible_key] = '\0';
+    }
+
+    // Calculate Letter Frequencies in Each Group and Determine Most Likely Key for Each Group
+    for (int group_index = 0; group_index < possible_key; group_index++) {
+      // Count Letter Occurrences in Each Group
+      double observed_letter_frequencies[26] = {0};
+      int total_group_chars = 0;
+      for(int i = 0; cipher_groups[group_index][i] != '\0'; i++) {
+        if (isalpha(cipher_groups[group_index][i])) {
+          char temp = toupper(cipher_groups[group_index][i]); // Convert to uppercase
+          observed_letter_frequencies[temp - 'A']++; // Count letter occurrence
+          total_group_chars++; // Increment total number of characters
+        }
+      }
+
+      // Convert Counts to Frequencies
+      for(int i = 0; i < 26; i++) {
+        observed_letter_frequencies[i] = observed_letter_frequencies[i] / (double)total_group_chars;
+      }
+
+      // Determine Best Key for Current Group
+      group_keys[group_index] = findBestKey(observed_letter_frequencies, letter_frequencies);
+    }
+    
+    // Store Current Group Key in Key Variable (for potential break and return)
+    for (int i = 0; i < possible_key; i++) {
+      key[i] = group_keys[i] + 'A';
+    }
+
+    // Decrypt Ciphertext with Key Candidate
+    cs642Decrypt(CIPHER_VIGE, key, possible_key, plaintext, plen, ciphertext, clen);
+
+    // Identify if decryption contains two most frequent words ("ALICE" and "THE")
+    char* result_the = strstr(plaintext, " THE ");
+    char* result_alice = strstr(plaintext, " ALICE ");
+    if(result_the != NULL && result_alice != NULL) { // Free Allocated Data and Break Loop (Key + Plaintext Found)
+      for (int i = 0; i < possible_key; i++) {
+        free(cipher_groups[i]);
+      }
+      free(cipher_groups);
+      break;
+    }
+    else { // Free Allocated Data and Continue w/ Next Key Length
+      for (int i = 0; i < possible_key; i++) {
+        free(cipher_groups[i]);
+      }
+      free(cipher_groups);
+    }
+  }
+
+  // Return successfully
+  return (0);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Function     : cs642PerformSUBSCryptanalysis
+// Description  : This is the function to cryptanalyze the substitution cipher
+//
+// Inputs       : ciphertext - the ciphertext to analyze
+//                clen - the length of the ciphertext
+//                plaintext - the place to put the plaintext in
+//                plen - the length of the plaintext
+//                key - the place to put the key in
+// Outputs      : 0 if successful, -1 if failure
+
+int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
+                                  int plen, char *key) {
 
   // ADD CODE HERE
+
   /*
   int most_frequent_idx = -1;
   int greatest_frequency = -1;
@@ -180,26 +309,6 @@ int cs642PerformVIGECryptanalysis(char *ciphertext, int clen, char *plaintext,
     free(plaintext_possibilities[i]);
   }
   */
-  // Return successfully
-  return (0);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-//
-// Function     : cs642PerformSUBSCryptanalysis
-// Description  : This is the function to cryptanalyze the substitution cipher
-//
-// Inputs       : ciphertext - the ciphertext to analyze
-//                clen - the length of the ciphertext
-//                plaintext - the place to put the plaintext in
-//                plen - the length of the plaintext
-//                key - the place to put the key in
-// Outputs      : 0 if successful, -1 if failure
-
-int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
-                                  int plen, char *key) {
-
-  // ADD CODE HERE
 
   // Return successfully
   return (0);
