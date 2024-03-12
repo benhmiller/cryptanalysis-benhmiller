@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <ctype.h>
+#include <float.h>
 
 // Project Include Files
 #include "cs642-cryptanalysis-support.h"
@@ -122,7 +123,6 @@ int cs642PerformROTXCryptanalysis(char *ciphertext, int clen, char *plaintext,
       break;
     }
   }
-  printf("Key: %d\n", *key);
 
   // Free Allocated Memory
   for (int i = 0; i < 26; i++) {
@@ -157,7 +157,7 @@ double calculateChiSquared(double observed[], double expected[]) {
 
 int findBestKey(double observed[], double expected[]) {
     int bestKey = 0;
-    double minChiSquared = 1000000000;
+    double minChiSquared = FLT_MAX;
 
     for (int key = 0; key < 26; key++) {
         // Shift observed frequencies by key (equivalent to a group-wise ROT-KEY cipher shift)
@@ -281,34 +281,122 @@ int cs642PerformVIGECryptanalysis(char *ciphertext, int clen, char *plaintext,
 
 int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                                   int plen, char *key) {
+  // Calculate Letter Frequencies in Ciphertext
+  double observed_letter_frequencies[26] = {0};
+  int total_chars = 0;
+  for(int i = 0; ciphertext[i] != '\0'; i++) {
+    if (isalpha(ciphertext[i])) {
+      char temp = toupper(ciphertext[i]); // Convert to uppercase
+      observed_letter_frequencies[temp - 'A']++; // Count letter occurrence
+      total_chars++; // Increment total number of characters
+    }
+  }
 
-  // ADD CODE HERE
+  // Convert Counts to Frequencies
+  for(int i = 0; i < 26; i++) {
+    observed_letter_frequencies[i] = observed_letter_frequencies[i] / (double)total_chars;
+  }
 
-  /*
-  int most_frequent_idx = -1;
-  int greatest_frequency = -1;
+  // Initialize an Expected and Observed Alphabet
+  int expected_alphabet[26] = {0};
+  int observed_alphabet[26] = {0};
+  for(int i = 0; i < ALPHABET_SIZE; i++) {
+    expected_alphabet[i] = i;
+    observed_alphabet[i] = i;
+  }
+
+  for(int i = 0; i < ALPHABET_SIZE; i++) {
+    //printf("%c\n", expected_alphabet[i] + 'A');
+    printf("%c: %f %f\n", expected_alphabet[i] + 'A', letter_frequencies[i], observed_letter_frequencies[i]);
+  }
+
+  // Rearrange Alphabet by Expected Frequencies (Most Frequent --> Least)
+  // Traverse each frequency
+  for(int i = 0; i < 26 - 1; i++) {
+    double max_freq = letter_frequencies[i];
+    int max_freq_idx = i;
+    // Find largest char-frequency pair from i-26
+    for(int j = i + 1; j < 26; j++) {
+      if(letter_frequencies[j] > max_freq) {
+        max_freq = letter_frequencies[j];
+        max_freq_idx = j;
+      }
+    }
+
+    // Swap found largest frequency to ith position
+    double temp_freq = letter_frequencies[i];
+    letter_frequencies[i] = max_freq;
+    letter_frequencies[max_freq_idx] = temp_freq;
+
+    // Swap Characters Accordingly
+    int temp_char = expected_alphabet[i];
+    expected_alphabet[i] = expected_alphabet[max_freq_idx];
+    expected_alphabet[max_freq_idx] = temp_char;
+  }
+
+  // Rearrange Observed Alphabet by Expected Frequencies (Most Frequent --> Least)
+  // Traverse each frequency
+  for(int i = 0; i < 26 - 1; i++) {
+    double max_freq = observed_letter_frequencies[i];
+    int max_freq_idx = i;
+    // Find largest char-frequency pair from i-26
+    for(int j = i + 1; j < 26; j++) {
+      if(observed_letter_frequencies[j] > max_freq) {
+        max_freq = observed_letter_frequencies[j];
+        max_freq_idx = j;
+      }
+    }
+
+    // Swap found largest frequency to ith position
+    double temp_freq = observed_letter_frequencies[i];
+    observed_letter_frequencies[i] = max_freq;
+    observed_letter_frequencies[max_freq_idx] = temp_freq;
+
+    // Swap Characters Accordingly
+    int temp_char = observed_alphabet[i];
+    observed_alphabet[i] = observed_alphabet[max_freq_idx];
+    observed_alphabet[max_freq_idx] = temp_char;
+  }
+
+  /* PRINT SORTED CHAR, EXPECTED, OBSERVED FREQUENCIES */
+  printf("\n");
+  for(int i = 0; i < ALPHABET_SIZE; i++) {
+    //printf("%c\n", expected_alphabet[i] + 'A');
+    printf("%c: %f %f\n", expected_alphabet[i] + 'A', letter_frequencies[i], observed_letter_frequencies[i]);
+  }
+
+  // Reconstruct Key in Alphabetic Order
+  int curr_letter = 0;
+  while (curr_letter < 26) {
+    int observed_index = 0;
+    // Find the index of the current letter in the observed alphabet
+    while (expected_alphabet[observed_index] != curr_letter) {
+      observed_index++;
+    }
+    // Map the observed letter to the key
+    key[curr_letter] = observed_alphabet[observed_index] + 'A';
+    curr_letter++;
+  }
+  printf("Key: %d\n", *key);
+  int num_words_from_dict = 0;
   for(int i = 0; i < cs642GetDictSize(); i++) {
-    if(strcmp(cs642GetWordfromDict(i).word, "THE") == 0) {
-      printf("Word: %s\n", cs642GetWordfromDict(i).word);
-      printf("Frequency: %d\n", cs642GetWordfromDict(i).count);
-      printf("\n");
-    }
-    if(cs642GetWordfromDict(i).count > greatest_frequency) {
-      printf("Word: %s\n", cs642GetWordfromDict(i).word);
-      printf("Frequency: %d\n", cs642GetWordfromDict(i).count);
-      most_frequent_idx = i;
-      greatest_frequency = cs642GetWordfromDict(i).count;
+    if(strstr(plaintext, cs642GetWordfromDict(i).word) != NULL) {
+      num_words_from_dict++;
     }
   }
-  
-  printf("Word: %s\n", cs642GetWordfromDict(most_frequent_idx).word);
-  printf("Frequency: %d\n", cs642GetWordfromDict(most_frequent_idx).count);
-  // Print and Free Each Translation
-  for (int i = 0; i < 26; i++) {
-    printf("Key %d: %s\n", i + 1, plaintext_possibilities[i]);
-    free(plaintext_possibilities[i]);
-  }
-  */
+  printf("WORDS FROM DICT: %d\n", num_words_from_dict);
+  printf("PERCENT WORDS FROM DICT: %f\n", num_words_from_dict / (double)cs642GetDictSize());
+  /*
+  // Swap C and G
+  int temp_letter = key[2];
+  key[2] = key[6];
+  key[6] = temp_letter;*/
+
+  cs642Decrypt(CIPHER_SUBS, key, 26, plaintext, plen, ciphertext, clen);
+  //printf("GC: %s\n", plaintext);
+
+  //cs642Decrypt(CIPHER_SUBS, key, 26, plaintext, plen, ciphertext, clen);
+  printf("CG: %s\n", plaintext);
 
   // Return successfully
   return (0);
