@@ -24,8 +24,9 @@
 
 // Declare Global Variables
 #define ALPHABET_SIZE 26
-#define MAX_ATTEMPTS 700
+#define MAX_ATTEMPTS 750
 #define MAX_FAILED_KEYS 200
+#define MIN_TRIGRAM_FREQUENCY 0.005
 
 // Struct to represent a trigram and its frequency
 struct TrigramFrequency {
@@ -317,7 +318,6 @@ int cs642PerformROTXCryptanalysis(char *ciphertext, int clen, char *plaintext,
       *key = i;
       break;
     }
-    int most_frequent_idx = -1;
   }
   //cs642Decrypt(CIPHER_ROTX, key, ALPHABET_SIZE, plaintext, plen, ciphertext, clen);
   //printf("CIPHER WORDS: %d\n", getNumberWordsFromDict(plaintext));
@@ -880,8 +880,9 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
             matching[swap_idx].match = temp;
 
             double temp_dist = matching[curr_idx].distance;
-            matching[curr_idx].distance = matching[swap_idx].distance;
-            matching[swap_idx].distance = temp_dist * freq_of_bigram;
+            matching[curr_idx].distance = matching[swap_idx].distance * freq_of_bigram;
+            //matching[swap_idx].distance = temp_dist * freq_of_bigram;
+            matching[swap_idx].distance = temp_dist;
 
             matching[pair_idx].distance = matching[pair_idx].distance * freq_of_bigram;
             // Increment Updates
@@ -905,6 +906,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   // Reset Attempts and Updates
   updates = 0;
   attempts = 0;
+  increment_distance = 0;
 
   /**** TRIGRAM LOGIC ****/
   while (bestNumber < 450 && attempts < MAX_ATTEMPTS) {
@@ -948,43 +950,51 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                   // Construct Key Candidate
                   char new_key[ALPHABET_SIZE + 1];
                   strcpy(new_key, best_key);
+                  int swap_idx = 0;
+                  double freq_of_trigram = 0;
 
-                  // Check if paired letters matched
+                  // Check if paired letters matched and if the frequency is significant
                   if (matching[pair_indices[0]].distance < 0.0019 + (0.001 * increment_distance) &&
                       matching[pair_indices[1]].distance < 0.0019 + (0.001 * increment_distance)) {
-                      // Get new letters to match
-                      char new_match[2] = {observed_trigram_array[i].trigram[(trigram_idx + 1) % 3], observed_trigram_array[i].trigram[(trigram_idx + 2) % 3]};
+                      // Get new letter to match
+                      char new_match = trigramArray[i].trigram[trigram_idx];
+                      freq_of_trigram = trigramArray[i].frequency;
 
-                      // Find letters currently matching to the new matches and swap in key with current letters
-                      for (int j = 0; j < ALPHABET_SIZE; j++) {
-                          if (matching[j].match == new_match[0]) {
-                              new_key[matching[curr_idx].self - 'A'] = matching[j].match;
-                              new_key[matching[j].self - 'A'] = matching[curr_idx].match;
-                          }
-                          if (matching[j].match == new_match[1]) {
-                              new_key[matching[pair_indices[0]].self - 'A'] = matching[j].match;
-                              new_key[matching[j].self - 'A'] = matching[pair_indices[0]].match;
-                          }
+                      for(int j = 0; j < ALPHABET_SIZE; j++) {
+                        if(matching[j].match == new_match) {
+                          swap_idx = j;
+                          break;
+                        }
                       }
-
+                      // Swap Only in Key
+                      new_key[matching[curr_idx].self - 'A'] = matching[swap_idx].match;
+                      new_key[matching[swap_idx].self - 'A'] = matching[curr_idx].match;
                       // Skip this attempt and generate a new key
                       if (isKeyInFailedSet(new_key, failedKeys, numFailedKeys)) {
-                          continue;
+                        continue;
                       }
 
                       // Update the best key if the current attempt is better
                       cs642Decrypt(CIPHER_SUBS, new_key, 26, plaintext, plen, ciphertext, clen);
                       int currentNumber = getNumberWordsFromDict(plaintext);
+                      //printf("NEW KEY: %s SIMILARITY: %d\n", new_key, currentNumber);
                       if (currentNumber > bestNumber) {
                           // Update Best Number and Key
                           bestNumber = currentNumber;
                           strcpy(best_key, new_key);
 
-                          // Update matching distances
+                          // Retain Swap in Struct
+                          char temp = matching[curr_idx].match;
+                          matching[curr_idx].match = matching[swap_idx].match;
+                          matching[swap_idx].match = temp;
+
                           double temp_dist = matching[curr_idx].distance;
-                          matching[curr_idx].distance = matching[pair_indices[0]].distance;
-                          matching[pair_indices[0]].distance = temp_dist;
-                          matching[pair_indices[1]].distance = temp_dist;
+                          matching[curr_idx].distance = matching[swap_idx].distance * freq_of_trigram;
+                          //matching[swap_idx].distance = temp_dist * freq_of_bigram;
+                          matching[swap_idx].distance = temp_dist;
+
+                          matching[pair_indices[0]].distance = matching[pair_indices[0]].distance * freq_of_trigram;
+                          matching[pair_indices[1]].distance = matching[pair_indices[1]].distance * freq_of_trigram;
 
                           // Increment Updates
                           updates++;
