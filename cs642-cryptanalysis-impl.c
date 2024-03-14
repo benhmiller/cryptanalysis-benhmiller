@@ -805,13 +805,13 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
 
   /**** BIGRAM LOGIC ****/
   // Match Letters By Bigram Frequency
-  while(bestNumber < 480 && increment_distance < 3) {
+  while(bestNumber < 500 && increment_distance < 5) {
     // For each unmatched character
     for(int curr_idx = 0; curr_idx < ALPHABET_SIZE; curr_idx++) {
       //printf("BEST KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
       //printf("INCREMENT DISTANCE: %d\n", increment_distance);
       //printf("SELF: %c DISTANCE: %f\n", matching[curr_idx].self, matching[curr_idx].distance);
-      if(matching[curr_idx].distance > 0.001 + (INCREMENT_VALUE  * increment_distance)) { // If character uunmatched, traverse bigrams
+      if(matching[curr_idx].distance > 0.001 * pow(10, -1 * increment_distance)) { // If character uunmatched, traverse bigrams
         //printf("HELLO\n");
         for(int i = 0; observed_bigram_array[i].frequency > 0; i++) { 
           //printf("%d\n", i);
@@ -923,10 +923,10 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   increment_distance = 0;
 
   /**** TRIGRAM LOGIC ****/
-  while (bestNumber < 480 && increment_distance < 3) {
+  while (bestNumber < 500 && increment_distance < 1) {
       // For each unmatched character
       for (int curr_idx = 0; curr_idx < ALPHABET_SIZE; curr_idx++) {
-          if (matching[curr_idx].distance > 0.001 + (INCREMENT_VALUE * increment_distance)) { // If character unmatched, traverse trigrams
+          if (matching[curr_idx].distance > 0.001 - (INCREMENT_VALUE * increment_distance)) { // If character unmatched, traverse trigrams
               for (int i = 0; observed_trigram_array[i].frequency > 0; i++) {
                   // Find trigrams to which character belongs
                   char paired_letters[2];  // Stores paired letters of trigram
@@ -969,7 +969,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
 
                   // Check if paired letters matched and if the frequency is significant
                   if (matching[pair_indices[0]].distance < 0.0019 + (INCREMENT_VALUE * increment_distance) &&
-                      matching[pair_indices[1]].distance < 0.0019 + (INCREMENT_VALUE * increment_distance)) { // 0.0019
+                      matching[pair_indices[1]].distance < 0.0019 + (INCREMENT_VALUE * increment_distance) ) { // 0.0019
                       // Get new letter to match
                       char new_match = trigramArray[i].trigram[trigram_idx];
                       freq_of_trigram = trigramArray[i].frequency;
