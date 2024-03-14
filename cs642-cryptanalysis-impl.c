@@ -24,9 +24,9 @@
 
 // Declare Global Variables
 #define ALPHABET_SIZE 26
-#define MAX_ATTEMPTS 600
+#define MAX_ATTEMPTS 100
 #define MAX_FAILED_KEYS 200
-#define MIN_TRIGRAM_FREQUENCY 0.005
+#define INCREMENT_VALUE 0.001
 
 // Struct to represent a trigram and its frequency
 struct TrigramFrequency {
@@ -789,13 +789,13 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
 
   /**** BIGRAM LOGIC ****/
   // Match Letters By Bigram Frequency
-  while(bestNumber < 450 && attempts < MAX_ATTEMPTS) {
+  while(bestNumber < 450 && attempts < MAX_ATTEMPTS * 2) {
     // For each unmatched character
     for(int curr_idx = 0; curr_idx < ALPHABET_SIZE; curr_idx++) {
       //printf("BEST KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
       //printf("INCREMENT DISTANCE: %d\n", increment_distance);
       //printf("SELF: %c DISTANCE: %f\n", matching[curr_idx].self, matching[curr_idx].distance);
-      if(matching[curr_idx].distance > 0.0019 + (0.001 * increment_distance)) { // If character uunmatched, traverse bigrams
+      if(matching[curr_idx].distance > 0.0005 + (INCREMENT_VALUE * increment_distance)) { // If character uunmatched, traverse bigrams
         //printf("HELLO\n");
         for(int i = 0; observed_bigram_array[i].frequency > 0; i++) { 
           //printf("%d\n", i);
@@ -828,7 +828,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
           //printf("NEW KEY: %s \n", new_key);
 
           // Check if paired letter matched
-          if(matching[pair_idx].distance < 0.0019 + (0.001 * increment_distance)) { // Paired matched --> set letter to correspond
+          if(matching[pair_idx].distance < 0.001 + (INCREMENT_VALUE * increment_distance)) { // Paired matched --> set letter to correspond
             // Get new letter to match
             char new_match = bigramArray[i].bigram[bigram_idx];
             freq_of_bigram = bigramArray[i].frequency;
@@ -887,6 +887,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
             matching[pair_idx].distance = matching[pair_idx].distance * freq_of_bigram;
             // Increment Updates
             updates++;
+            printf("BEST KEY: %s SIMILARITY: %d ATTEMPT: %d\n", best_key, bestNumber, attempts);
           }
           // Attempt Not Better --> Add to Failed Keys
           else {
@@ -896,7 +897,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
         }
       }
     }
-    increment_distance++; // Increase matching threshold (be stricter on matches)
+    increment_distance++; 
     attempts++;
   }
   printf("ATTEMPTS: %d\n", attempts);
@@ -912,7 +913,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   while (bestNumber < 450 && attempts < MAX_ATTEMPTS) {
       // For each unmatched character
       for (int curr_idx = 0; curr_idx < ALPHABET_SIZE; curr_idx++) {
-          if (matching[curr_idx].distance > 0.0019 + (0.001 * increment_distance)) { // If character unmatched, traverse trigrams
+          if (matching[curr_idx].distance > 0.001 + (INCREMENT_VALUE * increment_distance)) { // If character unmatched, traverse trigrams
               for (int i = 0; observed_trigram_array[i].frequency > 0; i++) {
                   // Find trigrams to which character belongs
                   char paired_letters[2];  // Stores paired letters of trigram
@@ -954,8 +955,8 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                   double freq_of_trigram = 0;
 
                   // Check if paired letters matched and if the frequency is significant
-                  if (matching[pair_indices[0]].distance < 0.0019 + (0.001 * increment_distance) &&
-                      matching[pair_indices[1]].distance < 0.0019 + (0.001 * increment_distance)) {
+                  if (matching[pair_indices[0]].distance < 0.0019 + (INCREMENT_VALUE * increment_distance) &&
+                      matching[pair_indices[1]].distance < 0.0019 + (INCREMENT_VALUE * increment_distance)) { // 0.0019
                       // Get new letter to match
                       char new_match = trigramArray[i].trigram[trigram_idx];
                       freq_of_trigram = trigramArray[i].frequency;
@@ -998,6 +999,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
 
                           // Increment Updates
                           updates++;
+                          printf("BEST KEY: %s SIMILARITY: %d ATTEMPT: %d\n", best_key, bestNumber, attempts);
                       } else {
                           // Attempt Not Better --> Add to Failed Keys
                           addToFailedKeys(key, failedKeys, &numFailedKeys);
