@@ -17,18 +17,81 @@
 #include <math.h>
 #include <ctype.h>
 #include <float.h>
+#include <time.h>
 
 // Project Include Files
 #include "cs642-cryptanalysis-support.h"
 
-// Declare Global Variables (for letter frequency)
+// Declare Global Variables
 #define ALPHABET_SIZE 26
+#define MAX_ATTEMPTS 150
+#define MAX_FAILED_KEYS 200
+
+// Struct to represent a bigram and its frequency
+struct BigramFrequency {
+    char bigram[3];  // Assuming bigrams are represented as two characters plus null terminator
+    double frequency;
+};
+
+struct LetterFrequency {
+    char letter;
+    double frequency;
+};
+
+
 
 // Declare the array as a global variable
+struct LetterFrequency letter_frequencies_struct[ALPHABET_SIZE] = {0};
 double letter_frequencies[ALPHABET_SIZE] = {0};
+double bigram_frequencies[ALPHABET_SIZE][ALPHABET_SIZE] = {0};
+struct BigramFrequency bigramArray[ALPHABET_SIZE * ALPHABET_SIZE];
 
 //
 // Functions
+
+// Function to compare two letter frequencies for sorting
+int compareLetterFrequencies(const void *a, const void *b) {
+  const struct LetterFrequency *letterA = (const struct LetterFrequency *)a;
+  const struct LetterFrequency *letterB = (const struct LetterFrequency *)b;
+
+  // Compare frequencies in descending order
+  if (letterB->frequency > letterA->frequency) {
+    return 1;
+  } else if (letterB->frequency < letterA->frequency) {
+    return -1;
+  } else {
+    return 0;
+  }
+}
+
+// Function to compare two bigram frequencies for sorting
+int compareBigramFrequencies(const void *a, const void *b) {
+  const struct BigramFrequency *bigramA = (const struct BigramFrequency *)a;
+  const struct BigramFrequency *bigramB = (const struct BigramFrequency *)b;
+
+  // Compare frequencies in descending order
+  if (bigramB->frequency > bigramA->frequency) {
+    return 1;
+  } else if (bigramB->frequency < bigramA->frequency) {
+    return -1;
+  } else {
+    return 0;
+  }
+}
+
+// Returns number of words from dictionary found in plaintext
+int getNumberWordsFromDict(char *plaintext) {
+  int num_words_from_dict = 0;
+  for(int i = 0; i < cs642GetDictSize(); i++) {
+    if(strstr(plaintext, cs642GetWordfromDict(i).word) != NULL) {
+      num_words_from_dict++;
+    }
+  }
+  //printf("WORDS FROM DICT: %d\n", num_words_from_dict);
+  //printf("PERCENT WORDS FROM DICT: %f\n", num_words_from_dict / (double)cs642GetDictSize());
+  //return num_words_from_dict / (double)cs642GetDictSize();
+  return num_words_from_dict;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -39,9 +102,13 @@ double letter_frequencies[ALPHABET_SIZE] = {0};
 //
 // Inputs       : void
 // Outputs      : 0 if successful, -1 if failure
-
 int cs642StudentInit(void) {
   int dictSize = cs642GetDictSize();
+
+  // Initialize Letters in Letter Frequency Array
+  for(int i = 0; i < ALPHABET_SIZE; i++) {
+    letter_frequencies_struct[i].letter = i + 'A';
+  }
 
   // Read words from the dictionary and update counts
   int total_word_count = 0;
@@ -54,17 +121,62 @@ int cs642StudentInit(void) {
       char ch = word[j];
       if (isalpha(ch)) {
         ch = toupper(ch); // Convert to uppercase
-        letter_frequencies[ch - 'A'] += count; // Increment by number of occurrences of letter / # words (i.e. 1 * count of word = count)
+        letter_frequencies_struct[ch - 'A'].frequency += count; // Increment by number of occurrences of letter / # words (i.e. 1 * count of word = count)
+        letter_frequencies[ch - 'A'] += count;
         total_word_count += count;
       }
-      //letter_frequencies[word[j] - 'A'] += count; // Increment by number of occurrences of letter / word (i.e. 1 * count of word = count)
-      //total_word_count += count;
     }
   }
 
   // Convert Counts to Frequencies
   for (int i = 0; i < ALPHABET_SIZE; i++) {
+    letter_frequencies_struct[i].frequency = letter_frequencies_struct[i].frequency / (double)total_word_count;
     letter_frequencies[i] = letter_frequencies[i] / (double)total_word_count;
+  }
+
+  // Count Bigrams in Dictionary
+  int totalBigrams = 0;
+  for (int i = 0; i < dictSize; i++) {
+    DictWord wordInfo = cs642GetWordfromDict(i); // Obtain individual word
+    char *word = wordInfo.word;
+    int count = wordInfo.count;
+
+    for(int i = 0; word[i] != '\0' && word[i + 1] != '\0'; i++) {
+      if (isalpha(word[i]) && isalpha(word[i + 1])) {
+        char first = toupper(word[i]);
+        char second = toupper(word[i + 1]);
+        bigram_frequencies[first - 'A'][second - 'A'] += count;
+        totalBigrams++;
+      }
+    }
+  }
+
+  // Convert counts to frequencies
+  for(int i = 0; i < ALPHABET_SIZE; i++) {
+    for (int j = 0; j < ALPHABET_SIZE; j++) {
+      bigram_frequencies[i][j] /= totalBigrams;
+    }
+  }
+  // Sort Bigrams into Array by Descending Frequency
+  int index = 0;
+  for (int i = 0; i < ALPHABET_SIZE; i++) {
+    for (int j = 0; j < ALPHABET_SIZE; j++) {
+      // Create a bigram string (2 characters plus null terminator)
+      char bigram[3] = {i + 'A', j + 'A', '\0'};
+              
+      // Populate the struct
+      strcpy(bigramArray[index].bigram, bigram);
+      bigramArray[index].frequency = bigram_frequencies[i][j];
+
+      // Move to the next index
+      index++;
+    }
+  }
+  qsort(bigramArray, ALPHABET_SIZE * ALPHABET_SIZE, sizeof(struct BigramFrequency), compareBigramFrequencies);
+
+  // Print the sorted bigram frequencies
+  for (int i = 0; i < ALPHABET_SIZE * ALPHABET_SIZE; i++) {
+    //printf("Bigram: %s; Frequency: %f\n", bigramArray[i].bigram, bigramArray[i].frequency);
   }
   
   return 0;
@@ -115,14 +227,21 @@ int cs642PerformROTXCryptanalysis(char *ciphertext, int clen, char *plaintext,
   // Locate Valid Plaintext From Possibilities
   for (int i = 0; i < 26; i++) {
     // Identify if translation contains two most frequent words ("ALICE" and "THE")
-    char* result_the = strstr(plaintext_possibilities[i], " THE ");
+    /*char* result_the = strstr(plaintext_possibilities[i], " THE ");
     char* result_alice = strstr(plaintext_possibilities[i], " ALICE ");
     if(result_the != NULL && result_alice != NULL) {
       strcpy(plaintext, plaintext_possibilities[i]);
       *key = i;
       break;
+    }*/
+    if(getNumberWordsFromDict(plaintext_possibilities[i]) > 400) {
+      strcpy(plaintext, plaintext_possibilities[i]);
+      *key = i;
+      break;
     }
   }
+  //cs642Decrypt(CIPHER_ROTX, key, ALPHABET_SIZE, plaintext, plen, ciphertext, clen);
+  //printf("CIPHER WORDS: %d\n", getNumberWordsFromDict(plaintext));
 
   // Free Allocated Memory
   for (int i = 0; i < 26; i++) {
@@ -145,7 +264,6 @@ int cs642PerformROTXCryptanalysis(char *ciphertext, int clen, char *plaintext,
 //                plen - the length of the plaintext
 //                key - the place to put the key in
 // Outputs      : 0 if successful, -1 if failure
-// Function to perform Kasiski examination and return the probable key length
 
 double calculateChiSquared(double observed[], double expected[]) {
     double chiSquared = 0.0;
@@ -246,15 +364,22 @@ int cs642PerformVIGECryptanalysis(char *ciphertext, int clen, char *plaintext,
     cs642Decrypt(CIPHER_VIGE, key, possible_key, plaintext, plen, ciphertext, clen);
 
     // Identify if decryption contains two most frequent words ("ALICE" and "THE")
-    char* result_the = strstr(plaintext, " THE ");
-    char* result_alice = strstr(plaintext, " ALICE ");
-    if(result_the != NULL && result_alice != NULL) { // Free Allocated Data and Break Loop (Key + Plaintext Found)
+    //char* result_the = strstr(plaintext, " THE ");
+    //char* result_alice = strstr(plaintext, " ALICE ");
+    if(getNumberWordsFromDict(plaintext) > 400) {
       for (int i = 0; i < possible_key; i++) {
         free(cipher_groups[i]);
       }
       free(cipher_groups);
       break;
     }
+    /*if(result_the != NULL && result_alice != NULL) { // Free Allocated Data and Break Loop (Key + Plaintext Found)
+      for (int i = 0; i < possible_key; i++) {
+        free(cipher_groups[i]);
+      }
+      free(cipher_groups);
+      break;
+    }*/
     else { // Free Allocated Data and Continue w/ Next Key Length
       for (int i = 0; i < possible_key; i++) {
         free(cipher_groups[i]);
@@ -279,128 +404,687 @@ int cs642PerformVIGECryptanalysis(char *ciphertext, int clen, char *plaintext,
 //                key - the place to put the key in
 // Outputs      : 0 if successful, -1 if failure
 
+// Function to check if a key is in the failed keys set
+int isKeyInFailedSet(char *key, char failedKeys[MAX_FAILED_KEYS][27], int numFailedKeys) {
+    for (int i = 0; i < numFailedKeys; i++) {
+        if (strcmp(key, failedKeys[i]) == 0) {
+            return 1; // Key is in the failed set
+        }
+    }
+    return 0; // Key is not in the failed set
+}
+
+// Function to add a key to the failed keys set
+void addToFailedKeys(char *key, char failedKeys[MAX_FAILED_KEYS][27], int *numFailedKeys) {
+    if (*numFailedKeys < MAX_FAILED_KEYS) {
+        strcpy(failedKeys[*numFailedKeys], key);
+        (*numFailedKeys)++;
+    }
+}
+
+// // Function to make a small change to the key
+// void makeRandomChange(char *currentKey, char *newKey, char failedKeys[MAX_FAILED_KEYS][27], int *numFailedKeys) {
+//     // Copy the current key to the new key
+//     strcpy(newKey, currentKey);
+
+//     while(isKeyInFailedSet(newKey, failedKeys, *numFailedKeys)) {
+//       // Randomly swap two letters in the key
+//       int index1 = rand() % ALPHABET_SIZE;
+//       int index2 = rand() % ALPHABET_SIZE;
+
+//       // Ensure that the indices are different
+//       while (index2 == index1) {
+//           index2 = rand() % ALPHABET_SIZE;
+//       }
+
+//       // Swap the letters
+//       char temp = newKey[index1];
+//       newKey[index1] = newKey[index2];
+//       newKey[index2] = temp;
+//     }
+// }
+
+// Function to calculate bigram frequency
+void calculateBigramFrequencies(char *text, double bigramFrequencies[ALPHABET_SIZE][ALPHABET_SIZE]) {
+    int totalBigrams = 0;
+
+    for (int i = 0; text[i] != '\0' && text[i + 1] != '\0'; i++) {
+        if (isalpha(text[i]) && isalpha(text[i + 1])) {
+            char first = toupper(text[i]);
+            char second = toupper(text[i + 1]);
+
+            bigramFrequencies[first - 'A'][second - 'A']++;
+            totalBigrams++;
+        }
+    }
+    //printf("BIGRAM TOTAL: %d\n", totalBigrams);
+    // Convert counts to frequencies
+    for (int i = 0; i < ALPHABET_SIZE; i++) {
+        for (int j = 0; j < ALPHABET_SIZE; j++) {
+            //printf("%d\n", totalBigrams);
+            bigramFrequencies[i][j] /= (double)totalBigrams;
+            //printf("FREQ: %f\n", bigramFrequencies[i][j]);
+        }
+    }
+}
+
+// // Function to calculate bigram similarity
+// double calculateBigramSimilarity(char *ciphertext, char *key, char *plaintext) {
+//     // Use the key to decrypt the text
+//     //char* decryptedText[strlen(ciphertext)];
+//     //printf("KEY:  %s\n", key);
+//     //printf("KEY LENGTH: %ld\n", strlen(key));
+//     cs642Decrypt(CIPHER_SUBS, key, ALPHABET_SIZE + 1, ciphertext, strlen(ciphertext), plaintext, strlen(ciphertext));
+//     //printf("DECRYPTED TEXT: %s\n", decryptedText);
+//     // Calculate bigram frequencies for the decrypted text
+//     double decryptedBigramFrequencies[ALPHABET_SIZE][ALPHABET_SIZE] = {0};
+//     calculateBigramFrequencies(plaintext, decryptedBigramFrequencies);
+
+//     // Calculate similarity (you can use a suitable metric)
+//     double similarity = 0.0;
+//     for (int i = 0; i < ALPHABET_SIZE; i++) {
+//         for (int j = 0; j < ALPHABET_SIZE; j++) {
+//             //printf("OBSERVED: %f\n", bigram_frequencies[i][j]);
+//             //printf("EXPECTED: %f\n", decryptedBigramFrequencies[i][j]);
+//             similarity += fabs(bigram_frequencies[i][j] - decryptedBigramFrequencies[i][j]);
+            
+//         }
+//     }
+//     //printf("SIMILARITY: %f\n", similarity);
+
+//     return similarity;
+// }
+// void sortArrayByFrequency(char *characters, double *frequencies, int size) {
+//   for (int i = 0; i < size - 1; i++) {
+//     double max_freq = frequencies[i];
+//     int max_freq_idx = i;
+
+//     // Find largest frequency from i to size
+//     for (int j = i + 1; j < size; j++) {
+//       if (frequencies[j] > max_freq) {
+//         max_freq = frequencies[j];
+//         max_freq_idx = j;
+//       }
+//     }
+
+//     // Swap found largest frequency to ith position
+//     double temp_freq = frequencies[i];
+//     frequencies[i] = max_freq;
+//     frequencies[max_freq_idx] = temp_freq;
+
+//     // Swap characters accordingly
+//     char temp_char = characters[i];
+//     characters[i] = characters[max_freq_idx];
+//     characters[max_freq_idx] = temp_char;
+//   }
+// }
+
+struct LetterMatching {
+  char self;       // Alphabet Character
+  char match;      // Matching character in ciphertext
+  double distance; // Estimated distance between two characters; Approaching 0 --> Better Match
+};
+
 int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                                   int plen, char *key) {
   // Calculate Letter Frequencies in Ciphertext
-  double observed_letter_frequencies[26] = {0};
+  struct LetterFrequency observed_letter_frequencies[26];
+  for(int i = 0; i < ALPHABET_SIZE; i++) {
+    observed_letter_frequencies[i].letter = i + 'A';
+  }
   int total_chars = 0;
   for(int i = 0; ciphertext[i] != '\0'; i++) {
     if (isalpha(ciphertext[i])) {
       char temp = toupper(ciphertext[i]); // Convert to uppercase
-      observed_letter_frequencies[temp - 'A']++; // Count letter occurrence
+      observed_letter_frequencies[temp - 'A'].frequency++; // Count letter occurrence
       total_chars++; // Increment total number of characters
     }
   }
 
   // Convert Counts to Frequencies
   for(int i = 0; i < 26; i++) {
-    observed_letter_frequencies[i] = observed_letter_frequencies[i] / (double)total_chars;
+    observed_letter_frequencies[i].frequency = observed_letter_frequencies[i].frequency / (double)total_chars;
   }
 
-  // Initialize an Expected and Observed Alphabet
-  int expected_alphabet[26] = {0};
-  int observed_alphabet[26] = {0};
+  // Create Local Copy of Letter Frequencies
+  struct LetterFrequency my_letter_frequencies[ALPHABET_SIZE];
   for(int i = 0; i < ALPHABET_SIZE; i++) {
-    expected_alphabet[i] = i;
-    observed_alphabet[i] = i;
+    my_letter_frequencies[i].letter = letter_frequencies_struct[i].letter;
+    my_letter_frequencies[i].frequency = letter_frequencies_struct[i].frequency;
   }
+
+  // Rearrange Alphabets by Expected Frequencies (Most Frequent --> Least)
+  qsort(my_letter_frequencies, ALPHABET_SIZE, sizeof(struct LetterFrequency), compareLetterFrequencies);
+  qsort(observed_letter_frequencies, ALPHABET_SIZE, sizeof(struct LetterFrequency), compareLetterFrequencies);
 
   for(int i = 0; i < ALPHABET_SIZE; i++) {
-    //printf("%c\n", expected_alphabet[i] + 'A');
-    printf("%c: %f %f\n", expected_alphabet[i] + 'A', letter_frequencies[i], observed_letter_frequencies[i]);
+    //printf("%c %f %c %f %f\n", my_letter_frequencies[i].letter, my_letter_frequencies[i].frequency, observed_letter_frequencies[i].letter, observed_letter_frequencies[i].frequency, fabs(my_letter_frequencies[i].frequency - observed_letter_frequencies[i].frequency));
+    //printf("%c %f\n", observed_letter_frequencies[i].letter, observed_letter_frequencies[i].frequency);
   }
 
-  // Rearrange Alphabet by Expected Frequencies (Most Frequent --> Least)
-  // Traverse each frequency
-  for(int i = 0; i < 26 - 1; i++) {
-    double max_freq = letter_frequencies[i];
-    int max_freq_idx = i;
-    // Find largest char-frequency pair from i-26
-    for(int j = i + 1; j < 26; j++) {
-      if(letter_frequencies[j] > max_freq) {
-        max_freq = letter_frequencies[j];
-        max_freq_idx = j;
-      }
+  // Calculate Bigram Frequencies in Ciphertext
+  double observed_bigram_frequencies[ALPHABET_SIZE][ALPHABET_SIZE] = {0};
+  calculateBigramFrequencies(ciphertext, observed_bigram_frequencies);
+
+  // Sort Bigram Frequencies in Descending Order
+  struct BigramFrequency observed_bigram_array[ALPHABET_SIZE * ALPHABET_SIZE];
+
+  int index = 0;
+  for (int i = 0; i < ALPHABET_SIZE; i++) {
+    for (int j = 0; j < ALPHABET_SIZE; j++) {
+      // Create a bigram string (2 characters plus null terminator)
+      char bigram[3] = {i + 'A', j + 'A', '\0'};
+            
+      // Populate the struct
+      strcpy(observed_bigram_array[index].bigram, bigram);
+      observed_bigram_array[index].frequency = observed_bigram_frequencies[i][j];
+
+      // Move to the next index
+      index++;
     }
+  }
+  qsort(observed_bigram_array, ALPHABET_SIZE * ALPHABET_SIZE, sizeof(struct BigramFrequency), compareBigramFrequencies);
 
-    // Swap found largest frequency to ith position
-    double temp_freq = letter_frequencies[i];
-    letter_frequencies[i] = max_freq;
-    letter_frequencies[max_freq_idx] = temp_freq;
-
-    // Swap Characters Accordingly
-    int temp_char = expected_alphabet[i];
-    expected_alphabet[i] = expected_alphabet[max_freq_idx];
-    expected_alphabet[max_freq_idx] = temp_char;
+  // Display Sorted Bigrams By Frequency
+  for (int i = 0; i < ALPHABET_SIZE * ALPHABET_SIZE; i++) {
+    //printf("Bigram: %s; Frequency: %f Bigram: %s; Frequency: %f\n", bigramArray[i].bigram, bigramArray[i].frequency, observed_bigram_array[i].bigram, observed_bigram_array[i].frequency);
   }
 
-  // Rearrange Observed Alphabet by Expected Frequencies (Most Frequent --> Least)
-  // Traverse each frequency
-  for(int i = 0; i < 26 - 1; i++) {
-    double max_freq = observed_letter_frequencies[i];
-    int max_freq_idx = i;
-    // Find largest char-frequency pair from i-26
-    for(int j = i + 1; j < 26; j++) {
-      if(observed_letter_frequencies[j] > max_freq) {
-        max_freq = observed_letter_frequencies[j];
-        max_freq_idx = j;
-      }
-    }
-
-    // Swap found largest frequency to ith position
-    double temp_freq = observed_letter_frequencies[i];
-    observed_letter_frequencies[i] = max_freq;
-    observed_letter_frequencies[max_freq_idx] = temp_freq;
-
-    // Swap Characters Accordingly
-    int temp_char = observed_alphabet[i];
-    observed_alphabet[i] = observed_alphabet[max_freq_idx];
-    observed_alphabet[max_freq_idx] = temp_char;
-  }
-
-  /* PRINT SORTED CHAR, EXPECTED, OBSERVED FREQUENCIES */
-  printf("\n");
+  // Create initial letter matching from monogram frequencies
+  int num_matches = 0;
+  struct LetterMatching matching[26];
   for(int i = 0; i < ALPHABET_SIZE; i++) {
-    //printf("%c\n", expected_alphabet[i] + 'A');
-    printf("%c: %f %f\n", expected_alphabet[i] + 'A', letter_frequencies[i], observed_letter_frequencies[i]);
+    matching[i].self = my_letter_frequencies[i].letter;
+    matching[i].match = observed_letter_frequencies[i].letter;
+    double distance = fabs(my_letter_frequencies[i].frequency - observed_letter_frequencies[i].frequency);
+    if(distance < 0.0019) {
+      matching[i].distance = distance;
+      num_matches++;
+      //printf("%c: %c\n", matching[i].self, matching[i].match);
+    }
+    matching[i].distance = distance;
   }
 
-  // Reconstruct Key in Alphabetic Order
-  int curr_letter = 0;
-  while (curr_letter < 26) {
-    int observed_index = 0;
+  // Construct key from current matching
+  char best_key[ALPHABET_SIZE + 1];
+
+  char curr_letter = 'A';
+  while (curr_letter <= 'Z') {
+    int curr_index = 0;
     // Find the index of the current letter in the observed alphabet
-    while (expected_alphabet[observed_index] != curr_letter) {
-      observed_index++;
+    while (matching[curr_index].self != curr_letter) {
+      curr_index++;
     }
     // Map the observed letter to the key
-    key[curr_letter] = observed_alphabet[observed_index] + 'A';
+    best_key[curr_letter - 'A'] = matching[curr_index].match;
     curr_letter++;
   }
-  printf("Key: %d\n", *key);
-  int num_words_from_dict = 0;
-  for(int i = 0; i < cs642GetDictSize(); i++) {
-    if(strstr(plaintext, cs642GetWordfromDict(i).word) != NULL) {
-      num_words_from_dict++;
+  best_key[ALPHABET_SIZE] = '\0';
+  cs642Decrypt(CIPHER_SUBS, best_key, 26, plaintext, plen, ciphertext, clen);
+  
+  // Loop Variables
+  // Initialize variables to keep track of failed keys
+  char failedKeys[MAX_FAILED_KEYS][27];
+  int numFailedKeys = 0;
+
+  // Attempt Various Key Possibilities (Returned Percentage of Words Must Be >= 0.18)
+  int attempts = 0;
+  //int key_attempts = 0;
+  int bestNumber = getNumberWordsFromDict(plaintext);
+  int increment_distance = 0;
+  int updates = 0;
+  printf("KEY: %s SIMILARITY: %d MATCHES: %d\n", best_key, bestNumber, num_matches);
+
+  // Match Letters By Bigram Frequency
+  while(bestNumber < 450 && attempts < MAX_ATTEMPTS) {
+    // For each unmatched character
+    for(int curr_idx = 0; curr_idx < ALPHABET_SIZE; curr_idx++) {
+      //printf("BEST KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
+      //printf("INCREMENT DISTANCE: %d\n", increment_distance);
+      //printf("SELF: %c DISTANCE: %f\n", matching[curr_idx].self, matching[curr_idx].distance);
+      if(matching[curr_idx].distance > 0.0019 + (0.001 * increment_distance)) { // If character uunmatched, traverse bigrams
+        //printf("HELLO\n");
+        for(int i = 0; observed_bigram_array[i].frequency > 0; i++) { 
+          //printf("%d\n", i);
+          // Find bigrams to which character belongs and get other letter
+          char paired_letter;  // Stores paired letter of bigram
+          int bigram_idx = -1; // Tracks location of letter in bigram
+          if(matching[curr_idx].self == observed_bigram_array[i].bigram[0]) {
+            paired_letter = observed_bigram_array[i].bigram[1];
+            bigram_idx = 0;
+          } 
+          else if (matching[curr_idx].self == observed_bigram_array[i].bigram[1]) {
+            paired_letter = observed_bigram_array[i].bigram[0];
+            bigram_idx = 1;
+          }
+
+          // Get matching information of paired letter
+          int pair_idx = -1;
+          for(int j = 0; j < ALPHABET_SIZE; j++) {
+            if(matching[j].self == paired_letter) {
+              pair_idx = j;
+              break;
+            }
+          }
+
+          // Construct Key Candidate
+          char new_key[ALPHABET_SIZE + 1];
+          strcpy(new_key, best_key);
+          int swap_idx = 0;
+          //printf("NEW KEY: %s \n", new_key);
+
+          // Check if paired letter matched
+          if(matching[pair_idx].distance < 0.0019 + (0.001 * increment_distance)) { // Paired matched --> set letter to correspond
+            // Get new letter to match
+            char new_match = bigramArray[i].bigram[bigram_idx];
+            
+            // Find letter currently matching to the new match and swap in key with current letter
+            for(int j = 0; j < ALPHABET_SIZE; j++) {
+              if(matching[j].match == new_match) {
+                swap_idx = j;
+                break;
+              }
+            }
+            // Swap Only in Key
+            new_key[matching[curr_idx].self - 'A'] = matching[swap_idx].match;
+            new_key[matching[swap_idx].self - 'A'] = matching[curr_idx].match;
+          }
+          //printf("NEW KEY: %s \n", new_key);
+
+          /*char curr_letter = 'A';
+          while (curr_letter <= 'Z') {
+            int curr_index = 0;
+            // Find the index of the current letter in the observed alphabet
+            while (matching[curr_index].self != curr_letter) {
+              curr_index++;
+            }
+            // Map the observed letter to the key
+            //key[curr_letter - 'A'] = matching[curr_index].match;
+            new_key[curr_letter - 'A'] = matching[curr_index].match;
+            curr_letter++;
+          }
+          new_key[ALPHABET_SIZE] = '\0';*/
+
+          // Skip this attempt and generate a new key
+          if (isKeyInFailedSet(new_key, failedKeys, numFailedKeys)) {
+            continue;
+          }
+
+          // Update the best key if the current attempt is better
+          cs642Decrypt(CIPHER_SUBS, new_key, 26, plaintext, plen, ciphertext, clen);
+          //printf("%d %f: PLAIN: %s\n", attempts, getPercentageWordsFromDict(plaintext), plaintext);
+          int currentNumber = getNumberWordsFromDict(plaintext);
+          //printf("NEW KEY: %s SIMILARITY: %d\n", new_key, currentNumber);
+          if (currentNumber > bestNumber) {
+            // Update Best Number and Key
+            bestNumber = currentNumber;
+            strcpy(best_key, new_key);
+
+            // Retain Swap in Struct
+            char temp = matching[curr_idx].match;
+            matching[curr_idx].match = matching[swap_idx].match;
+            matching[swap_idx].match = temp;
+
+            // Increment Updates
+            updates++;
+          }
+          //printf("BEST KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
+          // Attempt Not Better --> Add to Failed Keys
+          addToFailedKeys(key, failedKeys, &numFailedKeys);
+        }
+      }
     }
+    increment_distance++; // Increase matching threshold (be stricter on matches)
+    attempts++;
   }
-  printf("WORDS FROM DICT: %d\n", num_words_from_dict);
-  printf("PERCENT WORDS FROM DICT: %f\n", num_words_from_dict / (double)cs642GetDictSize());
-  /*
-  // Swap C and G
-  int temp_letter = key[2];
-  key[2] = key[6];
-  key[6] = temp_letter;*/
-
-  cs642Decrypt(CIPHER_SUBS, key, 26, plaintext, plen, ciphertext, clen);
-  //printf("GC: %s\n", plaintext);
-
-  //cs642Decrypt(CIPHER_SUBS, key, 26, plaintext, plen, ciphertext, clen);
-  printf("CG: %s\n", plaintext);
-
-  // Return successfully
-  return (0);
+  //printf("PLAIN: %s\n", plaintext);
+  printf("UPDATES: %d\n", updates);
+  printf("KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
+  strcpy(key, best_key);
+  // Return success
+  return 1;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+// int cs642PerformSUBSCryptanalysis3(char *ciphertext, int clen, char *plaintext,
+//                                   int plen, char *key) {
+//   /****** MONOGRAM LOGIC ******/
+//   // Calculate Letter Frequencies in Ciphertext
+//   double observed_letter_frequencies[26] = {0};
+//   int total_chars = 0;
+//   for(int i = 0; ciphertext[i] != '\0'; i++) {
+//     if (isalpha(ciphertext[i])) {
+//       char temp = toupper(ciphertext[i]); // Convert to uppercase
+//       observed_letter_frequencies[temp - 'A']++; // Count letter occurrence
+//       total_chars++; // Increment total number of characters
+//     }
+//   }
+
+//   // Convert Counts to Frequencies
+//   for(int i = 0; i < 26; i++) {
+//     observed_letter_frequencies[i] = observed_letter_frequencies[i] / (double)total_chars;
+//   }
+
+//   // Initialize an Expected and Observed Alphabet
+//   int expected_alphabet[26] = {0};
+//   int observed_alphabet[26] = {0};
+//   for(int i = 0; i < ALPHABET_SIZE; i++) {
+//     expected_alphabet[i] = i;
+//     observed_alphabet[i] = i;
+//   }
+
+//   // Rearrange Alphabet by Expected Frequencies (Most Frequent --> Least)
+//   for(int i = 0; i < 26 - 1; i++) {
+//     double max_freq = letter_frequencies_struct[i];
+//     int max_freq_idx = i;
+//     // Find largest char-frequency pair from i-26
+//     for(int j = i + 1; j < 26; j++) {
+//       if(letter_frequencies_struct[j] > max_freq) {
+//         max_freq = letter_frequencies_struct[j];
+//         max_freq_idx = j;
+//       }
+//     }
+
+//     // Swap found largest frequency to ith position
+//     double temp_freq = letter_frequencies_struct[i];
+//     letter_frequencies_struct[i] = max_freq;
+//     letter_frequencies_struct[max_freq_idx] = temp_freq;
+
+//     // Swap Characters Accordingly
+//     int temp_char = expected_alphabet[i];
+//     expected_alphabet[i] = expected_alphabet[max_freq_idx];
+//     expected_alphabet[max_freq_idx] = temp_char;
+//   }
+
+//   // Initialize variables to keep track of failed keys
+//   char failedKeys[MAX_FAILED_KEYS][27];
+//   int numFailedKeys = 0;
+
+//   // Attempt Various Key Possibilities (Returned Percentage of Words Must Be >= 0.18)
+//   int attempts = 0;
+//   int key_attempts = 0;
+//   char bestKey[ALPHABET_SIZE + 1];
+//   double bestPercentage = 0.0;
+
+//   // Initialize Array to Track Pairings
+//   struct LetterMatching matching[26];
+//   for(int i = 0; i < ALPHABET_SIZE; i++) {
+//     matching[i].self = i + 'A';
+//     matching[i].matched = 0;
+//   }
+
+//   while(getPercentageWordsFromDict(plaintext) < 0.18 && attempts < MAX_ATTEMPTS && key_attempts < 60) {
+//     // Rearrange Observed Alphabet by Expected Frequencies (Most Frequent --> Least)
+//     // Traverse each frequency
+//     for(int i = 0; i < 26 - 1; i++) {
+//       double max_freq = observed_letter_frequencies[i];
+//       int max_freq_idx = i;
+//       // Find largest char-frequency pair from i-26
+//       for(int j = i + 1; j < 26; j++) {
+//         if(observed_letter_frequencies[j] > max_freq || (fabs(observed_letter_frequencies[j] - max_freq) <= 0.001 && rand() % 2 == 0)) { // Arbitrarily swap similar frequency characters
+//           max_freq = observed_letter_frequencies[j];
+//           max_freq_idx = j;
+//         }
+//       }
+      
+//       // Swap found largest frequency to ith position
+//       double temp_freq = observed_letter_frequencies[i];
+//       observed_letter_frequencies[i] = max_freq;
+//       observed_letter_frequencies[max_freq_idx] = temp_freq;
+
+//       // Set Matching
+//       //matching[i].match = observed_alphabet[max_freq_idx] + 'A';
+//       //printf("MATCH: %c\n", matching[i].match);
+
+//       // Swap Characters Accordingly
+//       int temp_char = observed_alphabet[i];
+//       observed_alphabet[i] = observed_alphabet[max_freq_idx];
+//       observed_alphabet[max_freq_idx] = temp_char;
+//     }
+
+//     /* PRINT SORTED CHAR, EXPECTED, OBSERVED FREQUENCIES */
+//     /*printf("\n");
+//     for(int i = 0; i < ALPHABET_SIZE; i++) {
+//       //printf("%c\n", expected_alphabet[i] + 'A');
+//       printf("%c: %f %f\n", expected_alphabet[i] + 'A', letter_frequencies_struct[i], observed_letter_frequencies[i]);
+//     }*/
+
+//     // Reconstruct Key in Alphabetic Order
+//     int curr_letter = 0;
+//     while (curr_letter < 26) {
+//       int observed_index = 0;
+//       // Find the index of the current letter in the observed alphabet
+//       while (expected_alphabet[observed_index] != curr_letter) {
+//         observed_index++;
+//       }
+//       // Map the observed letter to the key
+//       key[curr_letter] = observed_alphabet[observed_index] + 'A';
+//       curr_letter++;
+//     }
+//     /*
+//     for(int i = 0; i < ALPHABET_SIZE; i++) {
+//       key[i] = matching[i].match;
+//     }*/
+//     //printf("CURRENT KEY: %s\n", key);
+
+//     if (isKeyInFailedSet(key, failedKeys, numFailedKeys)) { // Skip this attempt and generate a new key
+//       key_attempts++;
+//       continue;
+//     }
+//     key_attempts = 0;
+
+//     cs642Decrypt(CIPHER_SUBS, key, 26, plaintext, plen, ciphertext, clen);
+  
+//     double currentPercentage = getPercentageWordsFromDict(plaintext);
+//     // Update the best key if the current attempt is better
+//     if (currentPercentage > bestPercentage) {
+//       bestPercentage = currentPercentage;
+//       strcpy(bestKey, key);
+//     }
+//     //printf("%d %f: KEY: %s\n", attempts, currentPercentage, key);
+//     addToFailedKeys(key, failedKeys, &numFailedKeys);
+//     attempts++;
+//   }
+//   printf("%d %f: BEST KEY: %s\n", attempts, getPercentageWordsFromDict(plaintext), bestKey);
+//   /****** END ******/
+
+//   /****** BIGRAM LOGIC ******/
+//   // Count Bigrams in Ciphertext
+//   double observed_bigram_frequencies[ALPHABET_SIZE][ALPHABET_SIZE] = {0};
+//   calculateBigramFrequencies(ciphertext, observed_bigram_frequencies);
+
+//   int iterations = 0;
+//   while(getPercentageWordsFromDict(plaintext) < 0.18 && iterations < MAX_ATTEMPTS * 10) {
+//     // Calculate bigram similarity
+//     double currentSimilarity = calculateBigramSimilarity(ciphertext, bestKey, plaintext);
+
+//     // Make a small change to the key
+//     char newKey[ALPHABET_SIZE + 1];
+//     makeRandomChange(bestKey, newKey, failedKeys, &numFailedKeys);
+
+//     // Calculate bigram similarity with the modified key
+//     double newSimilarity = calculateBigramSimilarity(ciphertext, newKey, plaintext);
+    
+//     //printf("NEW  KEY: %s SIMILARITY: %f\n", newKey, newSimilarity);
+//     // If the new key improves the result, update the key
+//     if (newSimilarity < currentSimilarity) {
+//       addToFailedKeys(bestKey, failedKeys, &numFailedKeys);
+//       strcpy(bestKey, newKey);
+//       currentSimilarity = newSimilarity;
+//     }
+//     //printf("BEST KEY: %s SIMILARITY: %f\n", bestKey, currentSimilarity);
+//     iterations++;
+//   }
+
+//   // Print the final key and decrypted text
+//   cs642Decrypt(CIPHER_SUBS, bestKey, ALPHABET_SIZE, ciphertext, strlen(ciphertext), plaintext, plen);
+//   printf("Final Key: %s, SIMILARITY: %f\n", bestKey, getPercentageWordsFromDict(plaintext));
+//   //printf("Decrypted Text: %s\n", plaintext);
+
+//   /****** END ******/
+//   // Return successfully
+//   return (0);
+// }
+
+
+
+
+
+
+
+
+// /*** MONOGRAM SUBS ANALYSIS --- DEPRACATED ***/
+
+// int cs642PerformSUBSCryptanalysis2(char *ciphertext, int clen, char *plaintext,
+//                                   int plen, char *key) {
+//   // Calculate Letter Frequencies in Ciphertext
+//   double observed_letter_frequencies[26] = {0};
+//   int total_chars = 0;
+//   for(int i = 0; ciphertext[i] != '\0'; i++) {
+//     if (isalpha(ciphertext[i])) {
+//       char temp = toupper(ciphertext[i]); // Convert to uppercase
+//       observed_letter_frequencies[temp - 'A']++; // Count letter occurrence
+//       total_chars++; // Increment total number of characters
+//     }
+//   }
+
+//   // Convert Counts to Frequencies
+//   for(int i = 0; i < 26; i++) {
+//     observed_letter_frequencies[i] = observed_letter_frequencies[i] / (double)total_chars;
+//   }
+
+//   // Initialize an Expected and Observed Alphabet
+//   int expected_alphabet[26] = {0};
+//   int observed_alphabet[26] = {0};
+//   for(int i = 0; i < ALPHABET_SIZE; i++) {
+//     expected_alphabet[i] = i;
+//     observed_alphabet[i] = i;
+//   }
+
+//   for(int i = 0; i < ALPHABET_SIZE; i++) {
+//     //printf("%c\n", expected_alphabet[i] + 'A');
+//     //printf("%c: %f %f\n", expected_alphabet[i] + 'A', letter_frequencies_struct[i], observed_letter_frequencies[i]);
+//   }
+
+//   // Rearrange Alphabet by Expected Frequencies (Most Frequent --> Least)
+//   // Traverse each frequency
+//   for(int i = 0; i < 26 - 1; i++) {
+//     double max_freq = letter_frequencies_struct[i];
+//     int max_freq_idx = i;
+//     // Find largest char-frequency pair from i-26
+//     for(int j = i + 1; j < 26; j++) {
+//       if(letter_frequencies_struct[j] > max_freq) {
+//         max_freq = letter_frequencies_struct[j];
+//         max_freq_idx = j;
+//       }
+//     }
+
+//     // Swap found largest frequency to ith position
+//     double temp_freq = letter_frequencies_struct[i];
+//     letter_frequencies_struct[i] = max_freq;
+//     letter_frequencies_struct[max_freq_idx] = temp_freq;
+
+//     // Swap Characters Accordingly
+//     int temp_char = expected_alphabet[i];
+//     expected_alphabet[i] = expected_alphabet[max_freq_idx];
+//     expected_alphabet[max_freq_idx] = temp_char;
+//   }
+
+//   // Initialize variables to keep track of failed keys
+//   char failedKeys[MAX_FAILED_KEYS][27];
+//   int numFailedKeys = 0;
+
+//   // Attempt Various Key Possibilities (Returned Percentage of Words Must Be >= 0.18)
+//   int attempts = 0;
+//   char bestKey[ALPHABET_SIZE + 1];
+//   double bestPercentage = 0.0;
+
+//   while(getPercentageWordsFromDict(plaintext) < 0.18 && attempts < MAX_ATTEMPTS) {
+//     // Rearrange Observed Alphabet by Expected Frequencies (Most Frequent --> Least)
+//     // Traverse each frequency
+//     for(int i = 0; i < 26 - 1; i++) {
+//       double max_freq = observed_letter_frequencies[i];
+//       int max_freq_idx = i;
+//       // Find largest char-frequency pair from i-26
+//       for(int j = i + 1; j < 26; j++) {
+//         if(observed_letter_frequencies[j] > max_freq || (fabs(observed_letter_frequencies[j] - max_freq) <= 0.001 && rand() % 2 == 0)) { // Arbitrarily swap similar frequency characters
+//           max_freq = observed_letter_frequencies[j];
+//           max_freq_idx = j;
+//         }
+//         if(fabs(observed_letter_frequencies[j] - max_freq) <= 0.001 && observed_alphabet[j] != observed_alphabet[max_freq_idx]) {
+//           printf("SWAPPABLE: %c, %c\n", observed_alphabet[j] + 'A', observed_alphabet[max_freq_idx] + 'A');
+//         }
+        
+//       }
+
+//       // Print Swappable Characters
+      
+//       // Swap found largest frequency to ith position
+//       double temp_freq = observed_letter_frequencies[i];
+//       observed_letter_frequencies[i] = max_freq;
+//       observed_letter_frequencies[max_freq_idx] = temp_freq;
+
+//       // Swap Characters Accordingly
+//       int temp_char = observed_alphabet[i];
+//       observed_alphabet[i] = observed_alphabet[max_freq_idx];
+//       observed_alphabet[max_freq_idx] = temp_char;
+//     }
+
+//     /* PRINT SORTED CHAR, EXPECTED, OBSERVED FREQUENCIES */
+//     /*printf("\n");
+//     for(int i = 0; i < ALPHABET_SIZE; i++) {
+//       //printf("%c\n", expected_alphabet[i] + 'A');
+//       printf("%c: %f %f\n", expected_alphabet[i] + 'A', letter_frequencies_struct[i], observed_letter_frequencies[i]);
+//     }*/
+
+//     // Reconstruct Key in Alphabetic Order
+//     int curr_letter = 0;
+//     while (curr_letter < 26) {
+//       int observed_index = 0;
+//       // Find the index of the current letter in the observed alphabet
+//       while (expected_alphabet[observed_index] != curr_letter) {
+//         observed_index++;
+//       }
+//       // Map the observed letter to the key
+//       key[curr_letter] = observed_alphabet[observed_index] + 'A';
+//       curr_letter++;
+//     }
+
+//     if (isKeyInFailedSet(key, failedKeys, numFailedKeys)) {
+//       // Skip this attempt and generate a new key
+//       continue;
+//     }
+
+//     cs642Decrypt(CIPHER_SUBS, key, 26, plaintext, plen, ciphertext, clen);
+  
+//     //cs642Decrypt(CIPHER_SUBS, key, 26, plaintext, plen, ciphertext, clen);
+//     //printf("%d %f: PLAIN: %s\n", attempts, getPercentageWordsFromDict(plaintext), plaintext);
+//     double currentPercentage = getPercentageWordsFromDict(plaintext);
+//     // Update the best key if the current attempt is better
+//     if (currentPercentage > bestPercentage) {
+//       bestPercentage = currentPercentage;
+//       strcpy(bestKey, key);
+//     }
+//     //printf("%d %f: KEY: %s\n", attempts, currentPercentage, key);
+//     attempts++;
+//   }
+//   cs642Decrypt(CIPHER_SUBS, bestKey, 26, plaintext, plen, ciphertext, clen);
+//   printf("%d %f: BEST KEY: %s\n", attempts, getPercentageWordsFromDict(plaintext), bestKey);
+  
+
+//   // Return successfully
+//   return (0);
+// }
 
 ////////////////////////////////////////////////////////////////////////////////
 //
