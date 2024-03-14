@@ -24,7 +24,7 @@
 
 // Declare Global Variables
 #define ALPHABET_SIZE 26
-#define MAX_ATTEMPTS 750
+#define MAX_ATTEMPTS 600
 #define MAX_FAILED_KEYS 200
 #define MIN_TRIGRAM_FREQUENCY 0.005
 
