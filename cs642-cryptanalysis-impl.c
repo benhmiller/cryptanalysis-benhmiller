@@ -24,10 +24,15 @@
 
 // Declare Global Variables
 #define ALPHABET_SIZE 26
-#define MAX_ATTEMPTS 600
+#define MAX_ATTEMPTS 700
 #define MAX_FAILED_KEYS 200
 
 // Struct to represent a bigram and its frequency
+struct TrigramFrequency {
+    char bigram[3];  // Assuming bigrams are represented as two characters plus null terminator
+    double frequency;
+};
+
 struct BigramFrequency {
     char bigram[3];  // Assuming bigrams are represented as two characters plus null terminator
     double frequency;
@@ -705,13 +710,14 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
           char new_key[ALPHABET_SIZE + 1];
           strcpy(new_key, best_key);
           int swap_idx = 0;
+          double freq_of_bigram = 0;
           //printf("NEW KEY: %s \n", new_key);
 
           // Check if paired letter matched
           if(matching[pair_idx].distance < 0.0019 + (0.001 * increment_distance)) { // Paired matched --> set letter to correspond
             // Get new letter to match
             char new_match = bigramArray[i].bigram[bigram_idx];
-            
+            freq_of_bigram = bigramArray[i].frequency;
             // Find letter currently matching to the new match and swap in key with current letter
             for(int j = 0; j < ALPHABET_SIZE; j++) {
               if(matching[j].match == new_match) {
@@ -759,6 +765,11 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
             matching[curr_idx].match = matching[swap_idx].match;
             matching[swap_idx].match = temp;
 
+            double temp_dist = matching[curr_idx].distance;
+            matching[curr_idx].distance = matching[swap_idx].distance;
+            matching[swap_idx].distance = temp_dist * freq_of_bigram;
+
+            matching[pair_idx].distance = matching[pair_idx].distance * freq_of_bigram;
             // Increment Updates
             updates++;
           }
