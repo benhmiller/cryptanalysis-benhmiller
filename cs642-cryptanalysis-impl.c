@@ -111,9 +111,6 @@ int getNumberWordsFromDict(char *plaintext) {
       num_words_from_dict++;
     }
   }
-  //printf("WORDS FROM DICT: %d\n", num_words_from_dict);
-  //printf("PERCENT WORDS FROM DICT: %f\n", num_words_from_dict / (double)cs642GetDictSize());
-  //return num_words_from_dict / (double)cs642GetDictSize();
   return num_words_from_dict;
 }
 
@@ -198,11 +195,6 @@ int cs642StudentInit(void) {
     }
   }
   qsort(bigramArray, ALPHABET_SIZE * ALPHABET_SIZE, sizeof(struct BigramFrequency), compareBigramFrequencies);
-
-  // Print the sorted bigram frequencies
-  //for (int i = 0; i < ALPHABET_SIZE * ALPHABET_SIZE; i++) {
-  //    printf("Bigram: %s; Frequency: %f\n", bigramArray[i].bigram, bigramArray[i].frequency);
-  //}
 
   /*** COUNT TRIGRAMS ***/
   // Count Trigrams in Dictionary
@@ -470,18 +462,6 @@ int cs642PerformVIGECryptanalysis(char *ciphertext, int clen, char *plaintext,
   return (0);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-//
-// Function     : cs642PerformSUBSCryptanalysis
-// Description  : This is the function to cryptanalyze the substitution cipher
-//
-// Inputs       : ciphertext - the ciphertext to analyze
-//                clen - the length of the ciphertext
-//                plaintext - the place to put the plaintext in
-//                plen - the length of the plaintext
-//                key - the place to put the key in
-// Outputs      : 0 if successful, -1 if failure
-
 // Function to count number of words in ciphertext
 int countWords(const char *text) {
   int count = 0;
@@ -543,12 +523,24 @@ void calculateTrigramFrequencies(char *text, double trigramFrequencies[ALPHABET_
     }
 }
 
+// Struct to store letters, their matches, and the estimated distance between them
 struct LetterMatching {
   char self;       // Alphabet Character
   char match;      // Matching character in ciphertext
   double distance; // Estimated distance between two characters; Approaching 0 --> Better Match
 };
 
+////////////////////////////////////////////////////////////////////////////////
+//
+// Function     : cs642PerformSUBSCryptanalysis
+// Description  : This is the function to cryptanalyze the substitution cipher
+//
+// Inputs       : ciphertext - the ciphertext to analyze
+//                clen - the length of the ciphertext
+//                plaintext - the place to put the plaintext in
+//                plen - the length of the plaintext
+//                key - the place to put the key in
+// Outputs      : 0 if successful, -1 if failure
 int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                                   int plen, char *key) {
   // Calculate Letter Frequencies in Ciphertext
@@ -627,22 +619,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   }
   qsort(observed_trigram_array, ALPHABET_SIZE * ALPHABET_SIZE * ALPHABET_SIZE, sizeof(struct TrigramFrequency), compareTrigramFrequencies);
 
-  
-  // Display Sorted Bigrams By Frequency
-  /*
-  for (int i = 0; i < ALPHABET_SIZE * ALPHABET_SIZE; i++) {
-    printf("%f %f %f\n", bigramArray[i].frequency, observed_bigram_array[i].frequency, fabs(bigramArray[i].frequency - observed_bigram_array[i].frequency));
-  }
-  
-  // Display Sorted Trigrams By Frequency
-  for (int i = 0; i < ALPHABET_SIZE * ALPHABET_SIZE * ALPHABET_SIZE; i++) {
-    if(fabs(trigramArray[i].frequency - observed_trigram_array[i].frequency) > 0.005) { //0.0006
-      printf("%s %f %f %f\n", trigramArray[i].trigram, trigramArray[i].frequency, observed_trigram_array[i].frequency, fabs(trigramArray[i].frequency - observed_trigram_array[i].frequency));
-    }
-  }
-  */
- 
-
   // Create initial letter matching from monogram frequencies
   int num_matches = 0;
   struct LetterMatching matching[26];
@@ -653,12 +629,9 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
     if(distance < 0.0019) {
       matching[i].distance = distance;
       num_matches++;
-      //printf("%c: %c\n", matching[i].self, matching[i].match);
     }
     matching[i].distance = distance;
   }
-
-  
 
   // Construct key from current matching
   char best_key[ALPHABET_SIZE + 1];
@@ -678,8 +651,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   cs642Decrypt(CIPHER_SUBS, best_key, 26, plaintext, plen, ciphertext, clen);
   
   // Loop Variables
-  // Initialize variables to keep track of failed keys
-  //char failedKeys[MAX_FAILED_KEYS][27];
 
   // Attempt Various Key Possibilities
   int attempts = 0;
@@ -689,9 +660,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   int updates = 0;
   printf("ENTER MONOGRAM LOGIC...\n");
   printf("KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
-  /*for(int i = 0; i < ALPHABET_SIZE; i++){
-    printf("%c: %f\n", matching[i].self, matching[i].distance);
-  }*/
 
   // Utilize the initial matching to pseudo-randomly form keys from individual letter frequencies
   while(bestNumber < 480 && attempts < MAX_ATTEMPTS * 3) {
@@ -741,7 +709,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
     new_key[ALPHABET_SIZE] = '\0';
 
     // Update the best key if the current attempt is better
-    //printf("NEW KEY: %s\n", new_key);
     cs642Decrypt(CIPHER_SUBS, new_key, 26, plaintext, plen, ciphertext, clen);
     int currentNumber = getNumberWordsFromDict(plaintext);
 
@@ -762,11 +729,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
       // Increment Updates
       updates++;
     }
-    //else { // Attempt Not Better --> Add to Failed Keys
-    //  addToFailedKeys(new_key, failedKeys, &numFailedKeys);
-    //}
-    //printf("BEST KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
-    //cs642Decrypt(CIPHER_SUBS, best_key, 26, plaintext, plen, ciphertext, clen);
     attempts++;
   }
 
@@ -786,9 +748,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   while(bestNumber < 500 && increment_distance < 5) {
     // For each unmatched character
     for(int curr_idx = 0; curr_idx < ALPHABET_SIZE; curr_idx++) {
-      //printf("BEST KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
-      //printf("INCREMENT DISTANCE: %d\n", increment_distance);
-      //printf("SELF: %c DISTANCE: %f\n", matching[curr_idx].self, matching[curr_idx].distance);
       if(matching[curr_idx].distance > 0.001 * pow(10, -1 * increment_distance)) { // If character uunmatched, traverse bigrams
         //printf("HELLO\n");
         for(int i = 0; observed_bigram_array[i].frequency > 0.001 * pow(10, -1 * increment_distance); i++) { 
@@ -819,7 +778,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
           strcpy(new_key, best_key);
           int swap_idx = 0;
           double freq_of_bigram = 0;
-          //printf("NEW KEY: %s \n", new_key);
 
           // Check if paired letter matched
           if(matching[pair_idx].distance < 0.0019 + (INCREMENT_VALUE * increment_distance)) { // Paired matched --> set letter to correspond
@@ -833,19 +791,10 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                 break;
               }
             }
-            //printf("BIGRAM: %s \n", bigramArray[i].bigram);
-            //printf("SWAP CHAR: %d CURR IDX: %d\n", swap_idx, curr_idx);
             // Swap Only in Key
             new_key[matching[curr_idx].self - 'A'] = matching[swap_idx].match;
             new_key[matching[swap_idx].self - 'A'] = matching[curr_idx].match;
           }
-          //printf("NEW KEY: %s \n", new_key);
-
-          // Skip this attempt and generate a new key
-          //printf("FAILED KEY?: %d\n", isKeyInFailedSet(new_key, failedKeys, numFailedKeys));
-          //if (isKeyInFailedSet(new_key, failedKeys, numFailedKeys)) {
-          // continue;
-          //}
 
           // Update the best key if the current attempt is better
           cs642Decrypt(CIPHER_SUBS, new_key, 26, plaintext, plen, ciphertext, clen);
@@ -864,16 +813,12 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
 
             double temp_dist = matching[curr_idx].distance;
             matching[curr_idx].distance = matching[swap_idx].distance * freq_of_bigram;
-            //matching[swap_idx].distance = temp_dist * freq_of_bigram;
             matching[swap_idx].distance = temp_dist;
 
             matching[pair_idx].distance = matching[pair_idx].distance * freq_of_bigram;
             // Increment Updates
             updates++;
             printf("BEST KEY: %s SIMILARITY: %d INCREMENT: %d\n", best_key, bestNumber, increment_distance);
-            /*for(int i = 0; i < ALPHABET_SIZE; i++){
-              printf("%c: %c %f\n", matching[i].self, matching[i].match, matching[i].distance);
-            }*/
           }
         }
       }
@@ -884,9 +829,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
   printf("ATTEMPTS: %d\n", attempts);
   printf("UPDATES: %d\n", updates);
   printf("KEY: %s SIMILARITY: %d\n", best_key, bestNumber);
-  /*for(int i = 0; i < ALPHABET_SIZE; i++){
-    printf("%c: %f\n", matching[i].self, matching[i].distance);
-  }*/
   printf("ENTER TRIGRAM LOGIC...\n");
 
   // Reset Attempts and Updates
@@ -955,10 +897,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                       // Swap Only in Key
                       new_key[matching[curr_idx].self - 'A'] = matching[swap_idx].match;
                       new_key[matching[swap_idx].self - 'A'] = matching[curr_idx].match;
-                      // Skip this attempt and generate a new key
-                      //if (isKeyInFailedSet(new_key, failedKeys, numFailedKeys)) {
-                      //  continue;
-                      //}
 
                       // Update the best key if the current attempt is better
                       cs642Decrypt(CIPHER_SUBS, new_key, 26, plaintext, plen, ciphertext, clen);
@@ -985,13 +923,7 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
                           // Increment Updates
                           updates++;
                           printf("BEST KEY: %s SIMILARITY: %d INCREMENT: %d\n", best_key, bestNumber, increment_distance);
-                          /*for(int i = 0; i < ALPHABET_SIZE; i++){
-                            printf("%c: %c %f\n", matching[i].self, matching[i].match, matching[i].distance);
-                          }*/
-                      } //else {
-                          // Attempt Not Better --> Add to Failed Keys
-                        //  addToFailedKeys(new_key, failedKeys, &numFailedKeys);
-                      //}
+                      }
                   }
               }
           }
@@ -1022,7 +954,6 @@ int cs642PerformSUBSCryptanalysis(char *ciphertext, int clen, char *plaintext,
 //
 // Inputs       : void
 // Outputs      : 0 if successful, -1 if failure
-
 int cs642StudentCleanUp(void) {
 
   // ADD CODE HERE IF NEEDED
